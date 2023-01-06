@@ -102,7 +102,7 @@
       <link rel="prerender" href="{{ link.path }}" />
     {% endfor %}
 
-    {% set icon = resize_image(path=config.extra.profile_small, width=50, height=50, op="fill", quality=80) -%}
+    {% set icon = resize_image(path=config.extra.profile_small, width=50, height=50, op="fill", quality=90) -%}
     <link rel="prefetch" href="{{ icon.url }}" />
 
     <title>
