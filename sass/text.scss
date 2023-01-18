@@ -41,14 +41,13 @@ body {
     overflow: auto;
     padding: 1rem;
     max-width: 100%;
-    line-height: 1.5;
+    font-size: 0.85em;
   }
 }
 
 code {
   background: hsla(0, 0%, 0%, 0.04);
   padding: 0.2em 0;
-  font-size: 15px;
 
   pre > & {
     background: none;
