@@ -149,3 +149,9 @@ hr {
     padding-top: 1rem;
   }
 }
+
+@media (max-width: 1200px) {
+  body {
+    font-size: 17px;
+  }
+}
