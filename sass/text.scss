@@ -37,6 +37,30 @@ body {
     opacity: 0.9;
   }
 
+  toc {
+    background: hsla(0, 0%, 0%, 0.04);
+    padding: 0em 3em 0em 2em;
+    border-left: 6px solid var(--accent-color-light);
+    display: inline-block;
+    margin-top: 1rem;
+    h2 {
+      margin-bottom: -0.25rem;
+      margin-top: 1.25rem;
+    }
+    li.h2 {
+      list-style-type: upper-roman;
+      li.h3 {
+          list-style-type: decimal;
+          li.h4 {
+              list-style-type: lower-alpha;
+              li.h5 {
+                  list-style-type: circle;
+              }
+          }
+      }
+    }
+  }
+
   pre {
     overflow: auto;
     padding: 1rem;

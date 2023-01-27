@@ -1,0 +1,35 @@
+{# ========================= #}
+{# === table of contents === #}
+{# ========================= #}
+{%- macro toc(resource) %}
+    <toc>
+      <h2>Table of contents:</h2>
+      <ul>
+      {% for h1 in resource.toc %}
+          <li>
+              <a href="{{ h1.permalink | safe }}">{{ h1.title }}</a>
+              {% if h1.children %}
+                  <ul>
+                      {% for h2 in h1.children %}
+                          <li>
+                              <a href="{{ h2.permalink | safe }}">{{ h2.title }}</a>
+                          </li>
+                      {% endfor %}
+                  </ul>
+              {% endif %}
+          </li>
+      {% endfor %}
+      </ul>
+    </toc>
+{%- endmacro %}
+
+{# =================== #}
+{# === replace toc === #}
+{# =================== #}
+{%- macro replace_toc(resource) %}
+	{%- set content = resource.content %}
+	{%- if content is containing("[TOC]") %}
+		{%- set content = content | replace(from="<p>[TOC]</p>", to=self::toc(resource=resource)) %}
+	{%- endif -%}
+	{{ content | safe }}
+{%- endmacro %}
