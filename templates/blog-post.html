@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% import "macros.html" as macros %}
 
+{% block head %}
+{% if page.extra.katex %}
+{{ macros::katex() }}
+{% endif %}
+{% endblock head %}
+
 {% block posthead %}
   {% if page.earlier %}
     <link rel="prerender" href="{{ page.earlier.permalink }}">
@@ -76,7 +82,7 @@
     <small>
       {{ page.date | date(format="%B %d, %Y") }}
       {% if page.taxonomies.tags %}
-        - 
+        -
         <span class="tags">
           {% for tag in page.taxonomies.tags %}
             <a href="{{ get_taxonomy_url(kind="tags", name=tag) }}">{{ tag }}</a>
