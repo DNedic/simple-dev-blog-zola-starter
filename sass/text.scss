@@ -22,6 +22,12 @@ h5,
 h6 {
   font-weight: 500;
   color: var(--heading-color);
+  margin-bottom: -0.3rem;
+  margin-top: 2.3rem;
+}
+
+p {
+  margin-bottom: -0.25rem;
 }
 
 body {
@@ -42,10 +48,9 @@ body {
     padding: 0em 3em 0em 2em;
     border-left: 6px solid var(--accent-color-light);
     display: inline-block;
-    margin-top: 1rem;
+    margin-top: 2rem;
     h2 {
-      margin-bottom: -0.25rem;
-      margin-top: 1.25rem;
+      margin-top: 0.75rem;
     }
     li.h2 {
       list-style-type: upper-roman;
