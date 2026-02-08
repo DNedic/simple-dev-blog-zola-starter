@@ -78,9 +78,11 @@ code {
   background: hsla(0, 0%, 0%, 0.04);
   padding: 0.2em 0;
   font-size: 0.85em;
+  color: var(--accent-color-2);
 
   pre > & {
     background: none;
+    color: inherit;
   }
 }
 
