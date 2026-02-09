@@ -89,9 +89,11 @@
       {% if page.description %}
         <meta name="description" content="{{ page.description }}" />
         <meta name="twitter:description" content="{{ page.description }}">
+        <meta name="og:description" content="{{ page.description }}">
       {% else %}
         <meta name="description" content="{{ config.description }}" />
         <meta name="twitter:description" content="{{ config.description}}">
+        <meta name="og:description" content="{{ config.description }}">
       {% endif %}
     {% endblock description %}
 
