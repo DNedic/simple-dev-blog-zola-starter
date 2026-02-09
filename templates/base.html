@@ -62,6 +62,10 @@
       </script>
     {% endif %}
 
+    <link rel="canonical" href="{% if page.path %}{{ get_url(path=page.path) }}{% else %}{{ config.base_url }}{% endif %}">
+
+    <meta name="robots" content="index, follow">
+
     <meta property="og:type" content="website">
     <meta property="og:title" content="{% if page.title %}{{ page.title }}{% else %}{{ config.title }}{% endif %}">
     <meta property="og:url" content="{% if page.path %}{{ get_url(path=page.path) }}{% else %}{{ config.base_url }}{% endif %}">
