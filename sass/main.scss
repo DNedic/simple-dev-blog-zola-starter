@@ -80,8 +80,11 @@ table {
   border-collapse: collapse;
   margin: 25px auto;
   font-family: sans-serif;
-  min-width: 400px;
+  min-width: min(400px, 100%);
+  max-width: 100%;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+  display: block;
+  overflow-x: auto;
 }
 
 thead tr {
