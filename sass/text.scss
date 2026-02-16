@@ -4,7 +4,7 @@ body {
   font-family: "Rubik", "PT Serif", system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans",
     "Droid Sans", "Helvetica Neue", sans-serif;
-  font-size: clamp(16px, 0.24vw + 15.1px, 18px);
+  font-size: clamp(16.5px, 0.18vw + 15.85px, 18px);
   line-height: 1.7;
   padding: 2rem;
   min-height: 100vh;
@@ -239,6 +239,11 @@ hr {
   .footer-rule {
     margin-top: 3rem;
   }
+
+  blockquote {
+    padding-left: 0.8rem;
+    border-left-width: 5px;
+  }
 }
 
 // Phone
@@ -256,6 +261,13 @@ hr {
     > a:not(:last-child) {
       margin-right: 0.8rem;
     }
+  }
+
+  blockquote {
+    padding-left: 0.6rem;
+    border-left-width: 4px;
+    margin-left: 0;
+    margin-right: 0;
   }
 
   toc {
