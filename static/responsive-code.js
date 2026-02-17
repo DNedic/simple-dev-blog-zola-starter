@@ -26,6 +26,8 @@
   var SKIP_LANGS = { asm: 1, nasm: 1, gas: 1 };
   var SPACE_BREAK_LANGS = { bash: 1, dockerfile: 1, nix: 1 };
   var BACKSLASH_LANGS = { bash: 1, dockerfile: 1 };
+  var OPENERS = { '(': ')', '[': ']', '{': '}' };
+  var CLOSERS = { ')': '(', ']': '[', '}': '{' };
 
   // ── Break rules ──────────────────────────────────────────────────────
   // { pat, mode } — "after": break after pat; "before": break before pat.
@@ -265,6 +267,32 @@
 
   // ── Line breaking ────────────────────────────────────────────────────
 
+  // Returns true if the container at openPos has a single argument
+  // (no comma at depth 1 — breaking at the bracket wastes vertical space).
+  function singleArgContainer(text, openPos) {
+    var open = text[openPos], close = OPENERS[open];
+    if (!close) return false;
+    var depth = 0;
+    for (var i = openPos; i < text.length; i++) {
+      if (text[i] === open) depth++;
+      else if (text[i] === close) { depth--; if (depth === 0) return true; }
+      else if (text[i] === ',' && depth === 1) return false;
+    }
+    return true; // unclosed — treat as single-arg
+  }
+
+  // Find the matching opener for a closer at closePos.
+  function findMatchingOpen(text, closePos) {
+    var close = text[closePos], open = CLOSERS[close];
+    if (!open) return -1;
+    var depth = 0;
+    for (var i = closePos; i >= 0; i--) {
+      if (text[i] === close) depth++;
+      else if (text[i] === open) { depth--; if (depth === 0) return i; }
+    }
+    return -1;
+  }
+
   // Find rightmost unquoted space within maxCols.
   function findSpaceBreak(text, maxCols, minPos) {
     var floor = minPos || 1;
@@ -281,6 +309,14 @@
       var idx = text.lastIndexOf(rules[r].pat, Math.min(text.length, maxCols) - 1);
       if (idx < floor) continue;
       if (lang === "cmake" && inQuotes(text, idx)) continue;
+      // Skip single-arg container breaks — no horizontal gain
+      var pat1 = rules[r].pat;
+      if (pat1.length === 1 && OPENERS[pat1]) {
+        if (singleArgContainer(text, idx)) continue;
+      } else if (pat1.length === 1 && CLOSERS[pat1]) {
+        var op = findMatchingOpen(text, idx);
+        if (op >= 0 && singleArgContainer(text, op)) continue;
+      }
       var sp = rules[r].mode === "after" ? idx + rules[r].pat.length : idx;
       if (sp <= floor || sp >= text.length) continue;
       if (sp > best) best = sp;
@@ -302,12 +338,12 @@
     return indent + CONT_INDENT;
   }
 
-  // Track paren depth across emitted chunks to indent continuations
-  // inside parens to the opening '(' column + 1.
+  // Track bracket depth across emitted chunks to indent continuations
+  // inside containers to the opening bracket column + 1.
   function updateParenState(text, depth, col) {
     for (var i = 0; i < text.length; i++) {
-      if (text[i] === '(') { depth++; col = i; }
-      else if (text[i] === ')') { depth--; if (depth <= 0) { depth = 0; col = -1; } }
+      if (OPENERS[text[i]]) { depth++; col = i; }
+      else if (CLOSERS[text[i]]) { depth--; if (depth <= 0) { depth = 0; col = -1; } }
     }
     return { depth: depth, col: col };
   }
@@ -344,6 +380,10 @@
       var prevDepth = ps.depth;
       ps = updateParenState(plain(halves[0]), ps.depth, ps.col);
       var ci = continuationIndent(ps, prevDepth, indent, fallbackCI, cols);
+
+      // Single argument in parens: use classic indent for more horizontal room
+      if (ps.depth > 0 && ci > fallbackCI && plain(halves[1]).indexOf(", ") < 0)
+        ci = Math.min(fallbackCI, cols >> 1);
 
       pieces.push(toHTML(halves[0]) + (addBackslash ? " \\" : ""));
       rem = prependPad(halves[1], ci);
