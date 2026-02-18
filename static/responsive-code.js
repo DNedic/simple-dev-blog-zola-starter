@@ -381,9 +381,14 @@
       ps = updateParenState(plain(halves[0]), ps.depth, ps.col);
       var ci = continuationIndent(ps, prevDepth, indent, fallbackCI, cols);
 
-      // Single argument in parens: use classic indent for more horizontal room
-      if (ps.depth > 0 && ci > fallbackCI && plain(halves[1]).indexOf(", ") < 0)
-        ci = Math.min(fallbackCI, cols >> 1);
+      // Single argument in container: use classic indent for more horizontal room
+      if (ps.depth > 0 && ci > fallbackCI) {
+        var tail = plain(halves[1]);
+        var hasComma = false;
+        for (var k = tail.indexOf(", "); k >= 0; k = tail.indexOf(", ", k + 1))
+          if (!inQuotes(tail, k)) { hasComma = true; break; }
+        if (!hasComma) ci = Math.min(fallbackCI, cols >> 1);
+      }
 
       pieces.push(toHTML(halves[0]) + (addBackslash ? " \\" : ""));
       rem = prependPad(halves[1], ci);
