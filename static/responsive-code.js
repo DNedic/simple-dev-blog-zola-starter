@@ -44,8 +44,8 @@
   ];
 
   var COMMON_RULES = [
-    { pat: ", ", mode: "after" },
-    { pat: "; ", mode: "after" },
+    { pat: ", ", mode: "after",  sep: true },
+    { pat: "; ", mode: "after",  sep: true },
     { pat: "(",  mode: "after" },
     { pat: ")",  mode: "before" },
   ];
@@ -64,15 +64,19 @@
     ]).concat(COMMON_RULES),
     h:     c_like.concat(COMMON_RULES),
     cmake: [
-      { pat: " -",  mode: "before" },
-      { pat: " \"", mode: "before" },
+      { pat: " -",  mode: "before", sep: true },
+      { pat: " \"", mode: "before", sep: true },
     ].concat(COMMON_RULES),
     ld: [
-      { pat: ", ",  mode: "before" },
+      { pat: ", ",  mode: "before", sep: true },
       { pat: ": ",  mode: "after" },
       { pat: " > ", mode: "before" },
     ].concat(COMMON_RULES),
   };
+
+  // Break rule for space-separated argument languages (bash, dockerfile, nix).
+  // A single space acts as both the break point and the argument separator.
+  var SPACE_RULES = [{ pat: " ", mode: "before", sep: true }];
 
   // ── Segment helpers ──────────────────────────────────────────────────
   // A "segment" is { text, open, close } — plain text plus its wrapping
@@ -80,30 +84,18 @@
   // segments representing one source line.
 
   function plain(line) {
-    var s = "";
-    for (var i = 0; i < line.length; i++) s += line[i].text;
-    return s;
+    return line.map(function(seg) { return seg.text; }).join('');
   }
 
   function leadingSpaces(line) {
-    var n = 0;
-    for (var i = 0; i < line.length; i++) {
-      var t = line[i].text;
-      for (var j = 0; j < t.length; j++) {
-        if (t[j] === " ") n++; else return n;
-      }
-    }
-    return n;
+    return Math.max(0, plain(line).search(/\S/));
   }
 
   function toHTML(line) {
-    var h = "";
-    for (var i = 0; i < line.length; i++) {
-      var seg = line[i];
-      var escaped = seg.text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      h += seg.open ? seg.open + escaped + seg.close : escaped;
-    }
-    return h;
+    return line.map(function(seg) {
+      var e = seg.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return seg.open ? seg.open + e + seg.close : e;
+    }).join('');
   }
 
   function stripLeading(line) {
@@ -161,7 +153,7 @@
   }
 
   function prependPad(line, n) {
-    var pad = n > 0 ? new Array(n + 1).join(" ") : "";
+    var pad = " ".repeat(n);
     return [{ text: pad, open: "", close: "" }].concat(stripLeading(line));
   }
 
@@ -207,13 +199,6 @@
 
   // ── Analysis ─────────────────────────────────────────────────────────
 
-  function inQuotes(text, pos) {
-    var count = 0;
-    for (var i = 0; i < pos; i++)
-      if (text[i] === '"' && (i === 0 || text[i - 1] !== '\\')) count++;
-    return count % 2 === 1;
-  }
-
   function detectIndentStep(lines) {
     var step = 0;
     for (var i = 0; i < lines.length; i++) {
@@ -230,37 +215,21 @@
       : Math.max(step - 1, MIN_COMPRESSED_STEP);
   }
 
-  function anyOverflow(lines, cols) {
-    for (var i = 0; i < lines.length; i++)
-      if (plain(lines[i]).length > cols) return true;
-    return false;
-  }
-
   // ── Indent compression ──────────────────────────────────────────────
-  // Structural indent levels get compressed; alignment offsets (jumps of
-  // more than one indent step) are preserved as-is.
+  // Multiplies every line's leading-space count by `factor` (0 < factor ≤ 1),
+  // rounding to the nearest integer.  Factor is computed once from the first
+  // code block on the page and applied uniformly to all blocks.
 
-  function compressIndentation(lines, step, newStep) {
-    var changed = false, prevBase = 0;
+  function applyIndentFactor(lines, factor) {
+    var changed = false;
     for (var i = 0; i < lines.length; i++) {
       var sp = leadingSpaces(lines[i]);
-      if (sp === 0) { prevBase = 0; continue; }
-
-      var base, align;
-      if (sp <= prevBase + step) {
-        base = sp; align = 0;
-      } else {
-        base = prevBase; align = sp - base;
-      }
-
-      var level = Math.round(base / step);
-      var target = level * newStep + align;
-      var remove = sp - target;
+      if (sp <= 0) continue;
+      var remove = sp - Math.round(sp * factor);
       if (remove > 0) {
         lines[i] = removeNSpaces(lines[i], remove);
         changed = true;
       }
-      prevBase = base;
     }
     return changed;
   }
@@ -293,41 +262,82 @@
     return -1;
   }
 
-  // Find rightmost unquoted space within maxCols.
-  function findSpaceBreak(text, maxCols, minPos) {
-    var floor = minPos || 1;
-    for (var i = Math.min(text.length, maxCols) - 1; i >= floor; i--)
-      if (text[i] === ' ' && !inQuotes(text, i)) return i;
-    return -1;
-  }
+  // ── Chunk scanner ────────────────────────────────────────────────────
+  // Truly single-pass over a text chunk.  In one left-to-right scan:
+  //   • tracks string context (both " and ') incrementally
+  //   • tracks bracket depth/column for continuation-indent computation
+  //   • accumulates `best` — the rightmost break within the column budget
+  //     (the "go back one token" moment: when the window closes, `best` is
+  //     the last opportunity that fit, with no further search)
+  //   • tracks `lastSepPos` — rightmost argument separator seen anywhere,
+  //     used to detect single-argument containers without a second pass
+  //
+  // Returns { bp, ps, hasArgSep } or null.
+  // initPs carries bracket state accumulated from previous chunks so that
+  // multi-line breaks stay aware of earlier openers.
+  // "Before-closer" breaks save the pre-decrement bracket state so the
+  // first fragment still sees the enclosing bracket in its depth count.
+  function scanChunk(text, lang, floor, maxCols, initPs) {
+    var isSpaceLang = SPACE_BREAK_LANGS[lang];
+    var rules = isSpaceLang ? SPACE_RULES : (RULES[lang] || COMMON_RULES);
+    var inStr = false, strChar = '';
 
-  // Find rightmost pattern-based break within maxCols.
-  function findPatternBreak(text, maxCols, lang, minPos) {
-    var rules = RULES[lang] || COMMON_RULES;
-    var floor = minPos || 1, best = -1;
-    for (var r = 0; r < rules.length; r++) {
-      var idx = text.lastIndexOf(rules[r].pat, Math.min(text.length, maxCols) - 1);
-      if (idx < floor) continue;
-      if (lang === "cmake" && inQuotes(text, idx)) continue;
-      // Skip single-arg container breaks — no horizontal gain
-      var pat1 = rules[r].pat;
-      if (pat1.length === 1 && OPENERS[pat1]) {
-        if (singleArgContainer(text, idx)) continue;
-      } else if (pat1.length === 1 && CLOSERS[pat1]) {
-        var op = findMatchingOpen(text, idx);
-        if (op >= 0 && singleArgContainer(text, op)) continue;
+    var depth = initPs.depth, openCol = initPs.col;
+    var prevDepth, prevOpenCol;           // state before current char's bracket update
+
+    var best = -1, bestPs = null;
+    var lastSepPos = -1;
+
+    for (var i = 0; i < text.length; i++) {
+      var c = text[i];
+
+      if (inStr) {
+        if (c === strChar && (i === 0 || text[i - 1] !== '\\')) inStr = false;
+        continue;
       }
-      var sp = rules[r].mode === "after" ? idx + rules[r].pat.length : idx;
-      if (sp <= floor || sp >= text.length) continue;
-      if (sp > best) best = sp;
-    }
-    return best > 0 ? best : -1;
-  }
+      if (c === '"' || c === "'") { inStr = true; strChar = c; continue; }
 
-  function findBreak(text, maxCols, lang, minPos) {
-    return SPACE_BREAK_LANGS[lang]
-      ? findSpaceBreak(text, maxCols, minPos)
-      : findPatternBreak(text, maxCols, lang, minPos);
+      prevDepth = depth; prevOpenCol = openCol;
+      if (OPENERS[c]) { depth++; openCol = i; }
+      else if (CLOSERS[c]) { depth--; if (depth <= 0) { depth = 0; openCol = -1; } }
+
+      for (var r = 0; r < rules.length; r++) {
+        var pat  = rules[r].pat;
+        var plen = pat.length;
+        if (c !== pat[0]) continue;
+        if (plen > 1) {
+          var ok = true;
+          for (var k = 1; k < plen; k++)
+            if (text[i + k] !== pat[k]) { ok = false; break; }
+          if (!ok) continue;
+        }
+
+        var bp = rules[r].mode === 'after' ? i + plen : i;
+        if (bp <= floor || bp >= text.length) continue;
+
+        if (plen === 1 && OPENERS[pat]) {
+          if (singleArgContainer(text, i)) continue;
+        } else if (plen === 1 && CLOSERS[pat]) {
+          var op = findMatchingOpen(text, i);
+          if (op >= 0 && singleArgContainer(text, op)) continue;
+        }
+
+        if (rules[r].sep)
+          if (bp > lastSepPos) lastSepPos = bp;
+
+        if (bp <= maxCols && bp > best) {
+          best = bp;
+          // "before" at a closer: first half excludes the closer, so depth
+          // must still reflect the open bracket — use pre-decrement state.
+          bestPs = (rules[r].mode === 'before' && plen === 1 && CLOSERS[pat])
+            ? { depth: prevDepth, col: prevOpenCol }
+            : { depth: depth, col: openCol };
+        }
+      }
+    }
+
+    if (best < 0) return null;
+    return { bp: best, ps: bestPs, hasArgSep: lastSepPos >= best };
   }
 
   function defaultContIndent(lang, text, indent) {
@@ -336,16 +346,6 @@
       return colon >= 0 ? colon + LD_COLON_OFFSET : indent + CONT_INDENT;
     }
     return indent + CONT_INDENT;
-  }
-
-  // Track bracket depth across emitted chunks to indent continuations
-  // inside containers to the opening bracket column + 1.
-  function updateParenState(text, depth, col) {
-    for (var i = 0; i < text.length; i++) {
-      if (OPENERS[text[i]]) { depth++; col = i; }
-      else if (CLOSERS[text[i]]) { depth--; if (depth <= 0) { depth = 0; col = -1; } }
-    }
-    return { depth: depth, col: col };
   }
 
   function continuationIndent(ps, prevDepth, indent, fallback, maxCols) {
@@ -370,32 +370,29 @@
     var ps = { depth: 0, col: -1 };
     var rem = line, pieces = [];
     var splits = MAX_SPLITS, prevLen = text.length;
-    var rt = text;
 
-    while (rt.length > budget && splits-- > 0) {
-      var bp = findBreak(rt, budget, lang, leadingSpaces(rem) + 1);
-      if (bp < 0 || bp >= rt.length - 1) break;
+    while (splits-- > 0) {
+      var rt = plain(rem);
+      if (rt.length <= budget) break;
 
-      var halves = splitAt(rem, bp);
+      var result = scanChunk(rt, lang, Math.max(0, rt.search(/\S/)), budget, ps);
+      if (!result || result.bp >= rt.length - 1) break;
+
+      var halves = splitAt(rem, result.bp);
       var prevDepth = ps.depth;
-      ps = updateParenState(plain(halves[0]), ps.depth, ps.col);
+      ps = result.ps;
       var ci = continuationIndent(ps, prevDepth, indent, fallbackCI, cols);
 
-      // Single argument in container: use classic indent for more horizontal room
-      if (ps.depth > 0 && ci > fallbackCI) {
-        var tail = plain(halves[1]);
-        var hasComma = false;
-        for (var k = tail.indexOf(", "); k >= 0; k = tail.indexOf(", ", k + 1))
-          if (!inQuotes(tail, k)) { hasComma = true; break; }
-        if (!hasComma) ci = Math.min(fallbackCI, cols >> 1);
-      }
+      // Single-argument container: avoid wasteful deep indent
+      if (ps.depth > 0 && ci > fallbackCI && !result.hasArgSep)
+        ci = Math.min(fallbackCI, cols >> 1);
 
       pieces.push(toHTML(halves[0]) + (addBackslash ? " \\" : ""));
       rem = prependPad(halves[1], ci);
 
-      rt = plain(rem);
-      if (rt.length >= prevLen) break;
-      prevLen = rt.length;
+      var newLen = plain(rem).length;
+      if (newLen >= prevLen) break;
+      prevLen = newLen;
     }
 
     if (!pieces.length) return null;
@@ -405,7 +402,7 @@
 
   // ── Block formatter ──────────────────────────────────────────────────
 
-  function formatBlock(pre, cols) {
+  function formatBlock(pre, cols, factor) {
     var codeEl = pre.querySelector("code");
     if (!codeEl) return;
 
@@ -415,12 +412,7 @@
     var lines = extractLines(codeEl);
     if (lines.length > MAX_LINES) return;
 
-    var step = detectIndentStep(lines);
-    var newStep = computeCompressedStep(step, cols);
-    var changed = false;
-
-    if (anyOverflow(lines, cols) && newStep < step)
-      changed = compressIndentation(lines, step, newStep);
+    var changed = factor < 1 && applyIndentFactor(lines, factor);
 
     var output = [];
     for (var i = 0; i < lines.length; i++) {
@@ -454,8 +446,24 @@
     if (!pres.length) return;
     var cols = measureColumns(pres[0]);
     if (cols <= 0 || cols >= MAX_COLS) return;
+
+    // Compute a global indent factor from the first processable block so that
+    // all blocks on the page share the same indentation scale.
+    var factor = 1;
+    for (var j = 0; j < pres.length; j++) {
+      var lang0 = (pres[j].getAttribute("data-lang") || "").toLowerCase();
+      if (SKIP_LANGS[lang0]) continue;
+      var code0 = pres[j].querySelector("code");
+      if (!code0) continue;
+      var lines0 = extractLines(code0);
+      if (lines0.length > MAX_LINES) continue;
+      var step = detectIndentStep(lines0);
+      factor = computeCompressedStep(step, cols) / step;
+      break;
+    }
+
     for (var i = 0; i < pres.length; i++) {
-      try { formatBlock(pres[i], cols); }
+      try { formatBlock(pres[i], cols, factor); }
       catch (e) { console.error("responsive-code:", i, e); }
     }
   }
