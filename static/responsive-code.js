@@ -221,15 +221,42 @@
   // code block on the page and applied uniformly to all blocks.
 
   function applyIndentFactor(lines, factor) {
-    var changed = false;
+    // Detect this block's indent step to distinguish structural from alignment indents.
+    var step = 0;
     for (var i = 0; i < lines.length; i++) {
-      var sp = leadingSpaces(lines[i]);
-      if (sp <= 0) continue;
-      var remove = sp - Math.round(sp * factor);
-      if (remove > 0) {
-        lines[i] = removeNSpaces(lines[i], remove);
-        changed = true;
+      var sp0 = Math.max(0, plain(lines[i]).search(/\S/));
+      if (sp0 > 0 && (!step || sp0 < step)) step = sp0;
+    }
+    step = step || DEFAULT_INDENT_STEP;
+
+    var changed = false;
+    var prevOrig = null;  // original plain text of previous line (pre-compression)
+    var prevSp = 0;
+    var prevRemoved = 0;
+    var prevAligned = false;
+    for (var i = 0; i < lines.length; i++) {
+      var orig = plain(lines[i]);
+      var sp = Math.max(0, orig.search(/\S/));
+      if (sp > 0) {
+        // A line is alignment-indented when the previous original line has
+        // content at this column AND either it's a large forward jump (new
+        // alignment start) or the previous line was itself aligned (continuation).
+        var hasPrevContent = prevOrig !== null && sp < prevOrig.length && prevOrig[sp] !== ' ';
+        var aligned = hasPrevContent
+          && (sp > prevSp && sp - prevSp > step || prevAligned && sp >= prevSp);
+        var remove = aligned ? prevRemoved : sp - Math.round(sp * factor);
+        if (remove > 0) {
+          lines[i] = removeNSpaces(lines[i], remove);
+          changed = true;
+        }
+        prevRemoved = remove;
+        prevAligned = aligned;
+      } else {
+        prevRemoved = 0;
+        prevAligned = false;
       }
+      prevOrig = orig;
+      prevSp = sp;
     }
     return changed;
   }
