@@ -49,16 +49,21 @@ body {
   }
 
   blockquote {
-    border-left: 6px solid var(--accent-color-light);
-    padding-left: 1rem;
+    border-left-width: clamp(5px, 0.4vw, 6px);
+    border-left-style: solid;
+    border-left-color: var(--accent-color-light);
+    padding-left: clamp(0.6rem, 2vw, 1rem);
+    margin-left: clamp(0px, 3vw, 2.5rem);
     font-style: italic;
     opacity: 0.9;
   }
 
   toc {
     background: hsla(0, 0%, 0%, 0.04);
-    padding: 0em 3em 0em 2em;
-    border-left: 6px solid var(--accent-color-light);
+    padding: 0em clamp(1em, 3vw, 3em) 0em clamp(0.6em, 3vw, 1.5em);
+    border-left-width: clamp(5px, 0.4vw, 6px);
+    border-left-style: solid;
+    border-left-color: var(--accent-color-light);
     display: inline-block;
     margin-top: 2rem;
     max-width: 100%;
@@ -215,10 +220,8 @@ hr {
   }
 
   toc {
-    padding: 0em 2em 0em 1.5em;
     display: block;
     width: 100%;
-    box-sizing: border-box;
   }
 
   .post-title {
@@ -240,10 +243,7 @@ hr {
     margin-top: 3rem;
   }
 
-  blockquote {
-    padding-left: 0.8rem;
-    border-left-width: 5px;
-  }
+
 }
 
 // Phone
@@ -263,18 +263,9 @@ hr {
     }
   }
 
-  blockquote {
-    padding-left: 0.6rem;
-    border-left-width: 4px;
-    margin-left: 0;
-    margin-right: 0;
-  }
-
   toc {
-    padding: 0em 1em 0em 1em;
     display: block;
     width: 100%;
-    box-sizing: border-box;
   }
 
   .post-title {
